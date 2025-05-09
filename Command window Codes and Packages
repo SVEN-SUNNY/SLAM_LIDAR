@@ -47,7 +47,7 @@ ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap \
 
 ---
 
-## 📍 Navigation Localization Launch
+##  Navigation Localization Launch
 
 ### Create `nav2_bringup_custom/launch/nav2_localization.launch.py`:
 
@@ -96,7 +96,7 @@ ros2 launch nav2_bringup_custom nav2_localization.launch.py
 
 ---
 
-## 🚗 Motor Control (GPIO)
+##  Motor Control (GPIO)
 
 ### Python node: `motor_interface/cmd_vel_to_gpio.py`
 
@@ -159,7 +159,7 @@ ros2 run motor_interface cmd_vel_to_gpio
 
 ---
 
-## 🧠 Obstacle Avoidance Node
+##  Obstacle Avoidance Node
 
 ### Basic scan-to-velocity script:
 
@@ -198,7 +198,7 @@ ros2 run obstacle_avoidance obstacle_avoider
 
 ---
 
-## 📍 Setting Navigation Goals
+## Setting Navigation Goals
 
 ### Use RViz2 to load map:
 
