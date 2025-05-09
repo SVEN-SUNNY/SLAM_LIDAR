@@ -23,7 +23,7 @@ ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom base_footprint &
 
 ---
 
-## 🗺️ SLAM Mapping with Bag Playback
+##  SLAM Mapping with Bag Playback
 
 ### Record LIDAR Scan:
 
@@ -212,7 +212,7 @@ rviz2 -d $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_vi
 
 ---
 
-## 🛠️ Extras
+##  Extras
 
 ### Check `scan` is working:
 
@@ -228,4 +228,3 @@ pkill -f ros2
 
 ---
 
-Let me know if you'd like a launch file to bundle everything!
