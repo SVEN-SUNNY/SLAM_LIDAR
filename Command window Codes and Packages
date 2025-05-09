@@ -1,0 +1,231 @@
+
+
+## Setup & LIDAR Bringup
+
+### Start RPLIDAR:
+
+```bash
+ros2 run rplidar_ros rplidar_composition \
+  --ros-args \
+    -p serial_port:=/dev/ttyUSB0 \
+    -p serial_baudrate:=460800 \
+    -p frame_id:=laser \
+    -p scan_mode:=Standard &
+```
+
+### Static Transforms:
+
+```bash
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_footprint base_link &
+ros2 run tf2_ros static_transform_publisher 0 0 0.1 0 0 0 base_link laser &
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom base_footprint &
+```
+
+---
+
+## 🗺️ SLAM Mapping with Bag Playback
+
+### Record LIDAR Scan:
+
+```bash
+ros2 bag record /scan
+```
+
+### After recording, play back:
+
+```bash
+ros2 run slam_toolbox sync_slam_toolbox_node --ros-args -p use_sim_time:=true
+ros2 bag play <your_bag_folder> --clock
+```
+
+### Save the map:
+
+```bash
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap \
+  "{name: {data: '/ros2_wrksp/ros2_ws/maps/full_room_map'}}"
+```
+
+---
+
+## 📍 Navigation Localization Launch
+
+### Create `nav2_bringup_custom/launch/nav2_localization.launch.py`:
+
+```python
+from launch import LaunchDescription
+from launch_ros.actions import Node
+import os
+from ament_index_python.packages import get_package_share_directory
+
+def generate_launch_description():
+    map_yaml = '/ros2_wrksp/ros2_nav_ws/maps/full_room_map.yaml'
+    return LaunchDescription([
+        Node(
+            package='nav2_map_server',
+            executable='map_server',
+            name='map_server',
+            output='screen',
+            parameters=[{'yaml_filename': map_yaml}]
+        ),
+        Node(
+            package='nav2_amcl',
+            executable='amcl',
+            name='amcl',
+            output='screen',
+            parameters=[{'use_sim_time': False}]
+        ),
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_localization',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'autostart': True,
+                'node_names': ['map_server', 'amcl']
+            }]
+        ),
+    ])
+```
+
+### Launch localization:
+
+```bash
+ros2 launch nav2_bringup_custom nav2_localization.launch.py
+```
+
+---
+
+## 🚗 Motor Control (GPIO)
+
+### Python node: `motor_interface/cmd_vel_to_gpio.py`
+
+```python
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+import lgpio
+
+LEFT_PWM_PIN = 18
+LEFT_DIR_PIN = 23
+RIGHT_PWM_PIN = 19
+RIGHT_DIR_PIN = 24
+
+class MotorInterface(Node):
+    def __init__(self):
+        super().__init__('motor_interface')
+        self.h = lgpio.gpiochip_open(0)
+        for pin in (LEFT_PWM_PIN, LEFT_DIR_PIN, RIGHT_PWM_PIN, RIGHT_DIR_PIN):
+            lgpio.gpio_claim_output(self.h, pin, 0)
+        self.sub = self.create_subscription(Twist, '/cmd_vel', self.cb_cmd, 10)
+
+    def cb_cmd(self, msg):
+        linear = msg.linear.x
+        angular = msg.angular.z
+        left = 1 if (linear - angular) > 0 else -1 if (linear - angular) < 0 else 0
+        right = 1 if (linear + angular) > 0 else -1 if (linear + angular) < 0 else 0
+        self.set_motor(LEFT_DIR_PIN, LEFT_PWM_PIN, left)
+        self.set_motor(RIGHT_DIR_PIN, RIGHT_PWM_PIN, right)
+
+    def set_motor(self, dir_pin, pwm_pin, value):
+        lgpio.gpio_write(self.h, dir_pin, 1 if value > 0 else 0)
+        lgpio.gpio_write(self.h, pwm_pin, 1 if value != 0 else 0)
+
+    def destroy(self):
+        for pin in (LEFT_PWM_PIN, LEFT_DIR_PIN, RIGHT_PWM_PIN, RIGHT_DIR_PIN):
+            lgpio.gpio_write(self.h, pin, 0)
+        lgpio.gpiochip_close(self.h)
+
+if __name__ == '__main__':
+    rclpy.init()
+    node = MotorInterface()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy()
+        node.destroy_node()
+        rclpy.shutdown()
+```
+
+### Build & Run:
+
+```bash
+colcon build --packages-select motor_interface
+source install/setup.bash
+ros2 run motor_interface cmd_vel_to_gpio
+```
+
+---
+
+## 🧠 Obstacle Avoidance Node
+
+### Basic scan-to-velocity script:
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+
+class ObstacleAvoider(Node):
+    def __init__(self):
+        super().__init__('obstacle_avoider')
+        self.sub = self.create_subscription(LaserScan, '/scan', self.cb_scan, 10)
+        self.pub = self.create_publisher(Twist, '/cmd_vel', 10)
+
+    def cb_scan(self, msg):
+        front_ranges = [r for r in msg.ranges if not r == float('inf') and r < 0.5]
+        twist = Twist()
+        if front_ranges:
+            twist.angular.z = 0.5  # Turn
+        else:
+            twist.linear.x = 0.2  # Go forward
+        self.pub.publish(twist)
+
+rclpy.init()
+node = ObstacleAvoider()
+rclpy.spin(node)
+rclpy.shutdown()
+```
+
+### Run it:
+
+```bash
+ros2 run obstacle_avoidance obstacle_avoider
+```
+
+---
+
+## 📍 Setting Navigation Goals
+
+### Use RViz2 to load map:
+
+```bash
+rviz2 -d $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz
+```
+
+* Set Fixed Frame: `map`
+* Add `Map`, `LaserScan`, and `AMCL Pose`, `RobotModel`, `TF`.
+* Use `2D Nav Goal` to send goal.
+
+---
+
+## 🛠️ Extras
+
+### Check `scan` is working:
+
+```bash
+ros2 topic echo /scan --once
+```
+
+### Kill all running ROS 2 nodes:
+
+```bash
+pkill -f ros2
+```
+
+---
+
+Let me know if you'd like a launch file to bundle everything!
