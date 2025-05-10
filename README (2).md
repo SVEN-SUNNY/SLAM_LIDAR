@@ -133,10 +133,7 @@ Add the following displays:
 - BO motors with encoders
 - LoRa SX1278 module (optional)
 
-## Authors
 
-- Your Name
-- Guided by: Prof. XYZ (if applicable)
 
 ## License
 
